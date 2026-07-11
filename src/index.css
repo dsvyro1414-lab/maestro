@@ -234,6 +234,45 @@ body {
   text-align: right;
 }
 
+.manual-controls {
+  display: flex;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.manual-controls button {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 50%;
+  width: 46px;
+  height: 46px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.manual-controls button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: scale(1.08);
+}
+
+.pose-debug {
+  position: fixed;
+  right: 24px;
+  bottom: calc(24px + 195px + 10px); /* above the camera panel */
+  z-index: 2;
+  background: rgba(10, 10, 15, 0.7);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 0.8rem;
+  font-family: 'SF Mono', ui-monospace, monospace;
+  color: var(--text-dim);
+  backdrop-filter: blur(8px);
+}
+
 /* ---------- Camera panel ---------- */
 .camera-panel {
   position: fixed;

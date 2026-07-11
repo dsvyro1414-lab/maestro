@@ -30,6 +30,7 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null)
   const [clientIdInput, setClientIdInput] = useState(getClientId())
   const [muted, setMuted] = useState(false)
+  const [pose, setPose] = useState('no hand')
 
   const player = useMemo(() => new MaestroPlayer(), [])
   const engine = useMemo(() => new GestureEngine(), [])
@@ -86,13 +87,15 @@ export default function App() {
   const handleGestureFrame = useCallback(
     (frame: GestureFrame) => {
       setActiveGesture(frame.active)
+      setPose(frame.pose)
       if (frame.volumePreview !== null) setVolume(frame.volumePreview)
       const action = frame.action
       if (!action) return
+      console.log('[maestro] gesture action:', action)
       switch (action.type) {
         case 'togglePlay':
           player.togglePlay()
-          showToast(track?.paused ? '▶️ Play' : '⏸ Pause')
+          showToast('⏯ Play / Pause')
           break
         case 'next':
           player.next()
@@ -119,7 +122,7 @@ export default function App() {
           break
       }
     },
-    [player, engine, showToast, track],
+    [player, engine, showToast],
   )
 
   const startConducting = useCallback(async () => {
@@ -220,9 +223,15 @@ export default function App() {
               </div>
               <span className="volume-num">{Math.round(volume * 100)}</span>
             </div>
+            <div className="manual-controls">
+              <button onClick={() => { player.previous(); showToast('⏮ Previous track') }}>⏮</button>
+              <button onClick={() => { player.togglePlay(); showToast('⏯ Play / Pause') }}>⏯</button>
+              <button onClick={() => { player.next(); showToast('⏭ Next track') }}>⏭</button>
+            </div>
           </section>
 
           <CameraPanel engine={engine} onFrame={handleGestureFrame} onCameraError={setError} />
+          <div className="pose-debug">👁 {pose}</div>
 
           <footer className="legend">
             {(Object.keys(GESTURE_LABELS) as Exclude<GestureName, null>[]).map((g) => (

@@ -131,5 +131,48 @@ expect('palm is not pinch', !classifyPose(hand(0.5, 0.5, PALM)).isPinch)
   expect('no hand => idle', f.action === null && f.active === null)
 }
 
+// --- swipe survives a single-frame pose flicker (motion blur) ---
+{
+  const e = new GestureEngine()
+  let t = 40000
+  let fired: string | null = null
+  for (let i = 0; i < 12; i++) {
+    const x = 0.7 - i * 0.04
+    // frame 5 flickers to a fist-looking classification mid-swipe
+    const h = i === 5 ? hand(x, 0.5, FIST) : hand(x, 0.5, PALM)
+    const f = e.update(h, (t += 30))
+    if (f.action) fired = f.action.type
+  }
+  expect('swipe survives one-frame pose flicker', fired === 'next')
+}
+
+// --- swipe works with an imperfect palm (3 of 4 fingers read as extended) ---
+{
+  const e = new GestureEngine()
+  let t = 50000
+  let fired: string | null = null
+  const THREE = [true, true, true, false]
+  for (let i = 0; i < 12; i++) {
+    const f = e.update(hand(0.7 - i * 0.04, 0.5, THREE), (t += 30))
+    if (f.action) fired = f.action.type
+  }
+  expect('3-finger "palm" still swipes', fired === 'next')
+}
+
+// --- pinch release + second pinch after cooldown fires again ---
+{
+  const e = new GestureEngine()
+  let t = 60000
+  let count = 0
+  const step = (h: ReturnType<typeof hand>) => {
+    const f = e.update(h, (t += 40))
+    if (f.action?.type === 'togglePlay') count++
+  }
+  for (let i = 0; i < 3; i++) step(hand(0.5, 0.5, PINCH_POSE, true)) // pinch #1
+  for (let i = 0; i < 20; i++) step(hand(0.5, 0.5, PALM)) // release, wait out cooldown
+  for (let i = 0; i < 3; i++) step(hand(0.5, 0.5, PINCH_POSE, true)) // pinch #2
+  expect(`pinch-release-pinch fires twice (got ${count})`, count === 2)
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

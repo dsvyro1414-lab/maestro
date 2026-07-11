@@ -61,7 +61,7 @@ export function handScale(lm: Landmarks): number {
 /** A finger is "extended" if its tip is farther from the wrist than its PIP joint. */
 function fingerExtended(lm: Landmarks, tip: number, pip: number): boolean {
   const wrist = lm[LM.WRIST]
-  return dist(lm[tip], wrist) > dist(lm[pip], wrist) * 1.15
+  return dist(lm[tip], wrist) > dist(lm[pip], wrist) * 1.08
 }
 
 export interface HandPose {
@@ -70,6 +70,8 @@ export interface HandPose {
   ring: boolean
   pinky: boolean
   extendedCount: number
+  /** thumb-tip to index-tip distance, normalized by hand size */
+  pinchDist: number
   isPinch: boolean
   isFist: boolean
   isPalm: boolean
@@ -84,11 +86,11 @@ export function classifyPose(lm: Landmarks): HandPose {
   const extendedCount = [index, middle, ring, pinky].filter(Boolean).length
   const scale = handScale(lm)
   const pinchDist = dist(lm[LM.THUMB_TIP], lm[LM.INDEX_TIP]) / scale
-  // Pinch: thumb+index touching while middle/ring extended (so it can't be
-  // confused with a fist or the pointing pose).
-  const isPinch = pinchDist < 0.35 && middle && ring
+  // Pinch: thumb+index touching while at least one other finger is up (so it
+  // can't be confused with a fist).
+  const isPinch = pinchDist < 0.35 && (middle || ring)
   const isFist = extendedCount === 0 && !isPinch
   const isPalm = extendedCount === 4 && !isPinch
   const isPoint = index && !middle && !ring && !pinky && !isPinch
-  return { index, middle, ring, pinky, extendedCount, isPinch, isFist, isPalm, isPoint }
+  return { index, middle, ring, pinky, extendedCount, pinchDist, isPinch, isFist, isPalm, isPoint }
 }
