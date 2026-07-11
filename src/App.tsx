@@ -230,7 +230,12 @@ export default function App() {
           <section className="now-playing">
             {track ? (
               <>
-                <img className="album-art" src={track.albumArt} alt="Album art" />
+                <div className="vinyl">
+                  <div className={`vinyl-disc ${track.paused ? 'paused' : ''}`}>
+                    <img className="vinyl-label" src={track.albumArt} alt="Album art" />
+                    <div className="vinyl-hole" />
+                  </div>
+                </div>
                 <h2 className="track-name">{track.name}</h2>
                 <p className="track-artists">{track.artists}</p>
                 <p className="play-state">
