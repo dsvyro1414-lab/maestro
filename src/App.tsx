@@ -7,7 +7,14 @@ import {
   isLoggedIn,
   logout,
 } from './auth/spotifyAuth'
-import { MaestroPlayer, type TrackInfo, type SpotifyDevice } from './player/spotifyPlayer'
+import {
+  MaestroPlayer,
+  type TrackInfo,
+  type SpotifyDevice,
+  type PlayerControls,
+  type PlayerEvents,
+} from './player/spotifyPlayer'
+import { DemoPlayer } from './player/demoPlayer'
 import { GestureEngine, type GestureFrame, type GestureName } from './gestures/gestureEngine'
 import { CameraPanel } from './components/CameraPanel'
 
@@ -32,7 +39,10 @@ export default function App() {
   const [clientIdInput, setClientIdInput] = useState(getClientId())
   const [pose, setPose] = useState('no hand')
 
-  const player = useMemo(() => new MaestroPlayer(), [])
+  const spotify = useMemo(() => new MaestroPlayer(), [])
+  const demo = useMemo(() => new DemoPlayer(), [])
+  const [mode, setMode] = useState<'spotify' | 'demo'>('spotify')
+  const player: PlayerControls = mode === 'demo' ? demo : spotify
   const engine = useMemo(() => new GestureEngine(), [])
   const toastTimer = useRef<number>(0)
   const lastVolumeSent = useRef(0)
@@ -61,36 +71,49 @@ export default function App() {
     }
   }, [])
 
+  const playerEvents: PlayerEvents = useMemo(
+    () => ({
+      onSnapshot: (snap) => {
+        setTrack(snap.track)
+        setDeviceName(snap.deviceName)
+        // The poll lags the API by up to a few seconds — don't let a stale
+        // volume overwrite what the user just dialed in with a gesture.
+        const dialing =
+          gestureRef.current === 'volume' || performance.now() - lastVolumeGestureAt.current < 3000
+        if (snap.volumePercent !== null && !dialing) {
+          setVolume(snap.volumePercent / 100)
+          engine.currentVolume = snap.volumePercent / 100
+        }
+      },
+      onDevices: setDevices,
+      onError: (msg) => {
+        if (msg.startsWith('authentication_error')) {
+          logout()
+          setStage('landing')
+        }
+        setError(msg)
+      },
+    }),
+    [engine],
+  )
+
   // Once logged in, start the hybrid controller (API polling + SDK device).
   useEffect(() => {
     if (stage !== 'connecting') return
-    player
-      .init({
-        onSnapshot: (snap) => {
-          setTrack(snap.track)
-          setDeviceName(snap.deviceName)
-          // The poll lags the API by up to a few seconds — don't let a stale
-          // volume overwrite what the user just dialed in with a gesture.
-          const dialing =
-            gestureRef.current === 'volume' || performance.now() - lastVolumeGestureAt.current < 3000
-          if (snap.volumePercent !== null && !dialing) {
-            setVolume(snap.volumePercent / 100)
-            engine.currentVolume = snap.volumePercent / 100
-          }
-        },
-        onDevices: setDevices,
-        onError: (msg) => {
-          if (msg.startsWith('authentication_error')) {
-            logout()
-            setStage('landing')
-          }
-          setError(msg)
-        },
-      })
-      .catch((e) => setError(String(e)))
+    spotify.init(playerEvents).catch((e) => setError(String(e)))
     setStage('conducting')
-    return () => player.disconnect()
-  }, [stage, player, engine])
+  }, [stage, spotify, playerEvents])
+
+  // Tear the players down only when the app unmounts — NOT on stage changes
+  // (an earlier version disconnected right after init and silently killed the
+  // status polling).
+  useEffect(
+    () => () => {
+      spotify.disconnect()
+      demo.disconnect()
+    },
+    [spotify, demo],
+  )
 
   const handleGestureFrame = useCallback(
     (frame: GestureFrame) => {
@@ -136,12 +159,33 @@ export default function App() {
     setError(null)
     if (!getClientId() && clientIdInput.trim()) setClientId(clientIdInput)
     try {
-      await player.activate()
+      await spotify.activate()
     } catch {
       /* activation is best-effort */
     }
     beginLogin().catch((e) => setError(String(e)))
-  }, [clientIdInput, player])
+  }, [clientIdInput, spotify])
+
+  const startDemo = useCallback(async () => {
+    setError(null)
+    setMode('demo')
+    try {
+      await demo.activate() // inside the click = browser allows audio
+      await demo.init(playerEvents)
+      setStage('conducting')
+      await demo.togglePlay()
+    } catch (e) {
+      setError(String(e))
+    }
+  }, [demo, playerEvents])
+
+  const exitToLanding = useCallback(() => {
+    demo.disconnect()
+    if (mode === 'spotify') logout()
+    setMode('spotify')
+    setTrack(null)
+    setStage('landing')
+  }, [demo, mode])
 
   return (
     <div className="app">
@@ -166,7 +210,10 @@ export default function App() {
           <button className="btn-primary" onClick={connect}>
             Connect Spotify
           </button>
-          <p className="hint">Requires Spotify Premium · Everything runs in your browser</p>
+          <button className="btn-ghost" onClick={startDemo}>
+            🎧 Try the demo — no Spotify needed
+          </button>
+          <p className="hint">Spotify mode needs Premium · Everything runs in your browser</p>
         </main>
       )}
 
@@ -211,13 +258,13 @@ export default function App() {
               <button onClick={() => { player.togglePlay().catch((e) => setError(String(e))); showToast('⏯ Play / Pause') }}>⏯</button>
               <button onClick={() => { player.next().catch((e) => setError(String(e))); showToast('⏭ Next track') }}>⏭</button>
             </div>
-            {devices.length > 0 && (
+            {mode === 'spotify' && devices.length > 0 && (
               <div className="device-row">
                 {devices.map((d) => (
                   <button
                     key={d.id}
                     className={`device-pill ${d.isActive ? 'active' : ''}`}
-                    onClick={() => player.transferTo(d.id).catch((e) => setError(String(e)))}
+                    onClick={() => spotify.transferTo(d.id).catch((e) => setError(String(e)))}
                     title={d.type}
                   >
                     {d.type === 'Computer' ? '💻' : d.type === 'Smartphone' ? '📱' : '🔈'} {d.name}
@@ -236,8 +283,8 @@ export default function App() {
                 {GESTURE_LABELS[g]}
               </span>
             ))}
-            <button className="btn-ghost small" onClick={() => { logout(); setStage('landing') }}>
-              Log out
+            <button className="btn-ghost small" onClick={exitToLanding}>
+              {mode === 'demo' ? 'Exit demo' : 'Log out'}
             </button>
           </footer>
 

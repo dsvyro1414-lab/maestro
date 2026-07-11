@@ -59,6 +59,18 @@ export interface PlayerEvents {
   onError: (message: string) => void
 }
 
+/** Common control surface shared by the Spotify controller and the demo synth. */
+export interface PlayerControls {
+  init(events: PlayerEvents): Promise<void>
+  activate(): Promise<void>
+  togglePlay(): Promise<void>
+  next(): Promise<void>
+  previous(): Promise<void>
+  setVolume(v: number): Promise<void>
+  playTopTracks(): Promise<void>
+  disconnect(): void
+}
+
 const API = 'https://api.spotify.com/v1'
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {

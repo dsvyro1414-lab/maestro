@@ -4,7 +4,7 @@
 
 Built in 12 hours for [JecHacks 2026](https://jechacks.devpost.com/).
 
-**Live demo:** https://maestro-lemon.vercel.app (needs Spotify Premium; while the Spotify app is in dev mode your account must be whitelisted — see below)
+**Live demo:** https://maestro-lemon.vercel.app — hit **"Try the demo"** and you're conducting in five seconds: no account, no Spotify, gestures drive an in-browser synthesizer with procedurally generated tracks. Full Spotify mode needs Premium (and a whitelisted account while the app is in dev mode — see below).
 
 ## Gestures
 

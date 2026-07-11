@@ -20,6 +20,8 @@ Maestro turns your webcam into a touchless Spotify remote. Connect Spotify, allo
 
 And here's my favorite part: Maestro controls **whatever Spotify device is playing** — the desktop app, your phone, a smart speaker — through the Web API, and the browser tab itself also registers as a Spotify Connect device through the Web Playback SDK. Wave at your laptop, the music changes on your desktop app. On-screen feedback shows which gesture Maestro currently sees, so you always know it's listening.
 
+Don't have Premium? Hit **demo mode**: gestures drive a tiny in-browser synthesizer playing procedurally generated tracks (WebAudio oscillators, a step sequencer, and canvas-generated album art) — so anyone can try Maestro five seconds after opening the page, no account at all.
+
 And everything — camera, hand tracking, gesture recognition, auth, playback — runs 100% in your browser. There is no backend. Your camera frames are processed locally and never uploaded, because there's no server in this project to upload them to.
 
 ## How I built it
