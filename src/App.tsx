@@ -207,13 +207,13 @@ export default function App() {
               onChange={(e) => setClientIdInput(e.target.value)}
             />
           )}
-          <button className="btn-primary" onClick={connect}>
-            Connect Spotify
+          <button className="btn-primary" onClick={startDemo}>
+            🖐 Start conducting — instant demo
           </button>
-          <button className="btn-ghost" onClick={startDemo}>
-            🎧 Try the demo — no Spotify needed
+          <button className="btn-ghost" onClick={connect}>
+            Connect Spotify (Premium, whitelisted accounts)
           </button>
-          <p className="hint">Spotify mode needs Premium · Everything runs in your browser</p>
+          <p className="hint">No account needed for the demo · Everything runs in your browser</p>
         </main>
       )}
 

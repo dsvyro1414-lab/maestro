@@ -42,7 +42,7 @@ Coordinate systems humbled me. The camera feed isn't mirrored, so when you swipe
 
 Then gesture spam. Hand tracking is the easy part — making it not fire constantly is the hard part. My first detector was if-statement soup that triggered three "next track"s per swipe, then again when my hand returned. Fixing it took a sliding position trail, a minimum travel distance, and the 900ms cooldown. Then the opposite problem: a fast swipe motion-blurs the hand, the classifier drops the "palm" pose for one frame, and a naive engine throws the whole swipe away. The trail now survives brief pose flickers.
 
-The sneakiest bug: my cooldown timers were initialized to 0, so the very first gesture after page load got silently eaten by the cooldown check. My unit tests caught it — 17 tests that feed synthetic hand landmarks into the engine, testing a camera app with no camera. The fix was initializing the timers to -Infinity.
+The sneakiest bug: my cooldown timers were initialized to 0, so the very first gesture after page load got silently eaten by the cooldown check. My unit tests caught it — 20 tests that feed synthetic hand landmarks into the engine, testing a camera app with no camera. The fix was initializing the timers to -Infinity.
 
 Also, Spotify rejects `localhost` redirect URIs — it has to be `127.0.0.1`. Ask me how long that one took.
 
@@ -50,7 +50,7 @@ Also, Spotify rejects `localhost` redirect URIs — it has to be `127.0.0.1`. As
 
 I built this alone, in under 12 hours, and it actually works. The thing I'm proudest of is that the gestures feel trustworthy — one pinch is one pause, one swipe is one skip, every time. That took real engineering: a proper state machine, hand-size normalization, cooldowns, hysteresis — not just raw model output wired to an API. The difference between a cool demo and a usable tool is a state machine.
 
-I also wrote unit tests during a hackathon (I know). Seventeen of them, pushing fake hand landmarks through the gesture engine, and they caught a genuine bug before any human hand did. Writing tests felt like a waste of precious minutes right up until the exact moment it wasn't.
+I also wrote unit tests during a hackathon (I know). Twenty of them, pushing fake hand landmarks through the gesture engine, and they caught a genuine bug before any human hand did. Writing tests felt like a waste of precious minutes right up until the exact moment it wasn't.
 
 And the whole thing is 100% client-side. That's not a privacy policy, that's an architecture.
 
