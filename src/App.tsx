@@ -36,6 +36,7 @@ export default function App() {
   const engine = useMemo(() => new GestureEngine(), [])
   const toastTimer = useRef<number>(0)
   const lastVolumeSent = useRef(0)
+  const lastVolumeGestureAt = useRef(-Infinity)
   const gestureRef = useRef<GestureName>(null)
   gestureRef.current = activeGesture
 
@@ -68,7 +69,11 @@ export default function App() {
         onSnapshot: (snap) => {
           setTrack(snap.track)
           setDeviceName(snap.deviceName)
-          if (snap.volumePercent !== null && gestureRef.current !== 'volume') {
+          // The poll lags the API by up to a few seconds — don't let a stale
+          // volume overwrite what the user just dialed in with a gesture.
+          const dialing =
+            gestureRef.current === 'volume' || performance.now() - lastVolumeGestureAt.current < 3000
+          if (snap.volumePercent !== null && !dialing) {
             setVolume(snap.volumePercent / 100)
             engine.currentVolume = snap.volumePercent / 100
           }
@@ -89,6 +94,11 @@ export default function App() {
 
   const handleGestureFrame = useCallback(
     (frame: GestureFrame) => {
+      // Leaving the volume gesture: flush the final dialed value (individual
+      // updates are throttled, the last one may have been swallowed).
+      if (gestureRef.current === 'volume' && frame.active !== 'volume') {
+        player.setVolume(engine.currentVolume)
+      }
       setActiveGesture(frame.active)
       setPose(frame.pose)
       if (frame.volumePreview !== null) setVolume(frame.volumePreview)
@@ -110,6 +120,7 @@ export default function App() {
           break
         case 'volume': {
           const now = performance.now()
+          lastVolumeGestureAt.current = now
           if (now - lastVolumeSent.current > 200) {
             lastVolumeSent.current = now
             player.setVolume(action.value)
@@ -118,7 +129,7 @@ export default function App() {
         }
       }
     },
-    [player, showToast],
+    [player, engine, showToast],
   )
 
   const connect = useCallback(async () => {

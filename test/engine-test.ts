@@ -144,6 +144,34 @@ expect('palm is not pinch', !classifyPose(hand(0.5, 0.5, PALM)).isPinch)
   expect('swipe survives one-frame pose flicker', fired === 'next')
 }
 
+// --- swipe survives the tracker LOSING the hand for two frames ---
+{
+  const e = new GestureEngine()
+  let t = 45000
+  let fired: string | null = null
+  for (let i = 0; i < 12; i++) {
+    const lost = i === 4 || i === 5
+    const f = e.update(lost ? null : hand(0.7 - i * 0.04, 0.5, PALM), (t += 30))
+    if (f.action) fired = f.action.type
+  }
+  expect('swipe survives 2-frame hand loss', fired === 'next')
+}
+
+// --- return stroke does not cancel a new swipe (monotonic run) ---
+{
+  const e = new GestureEngine()
+  let t = 47000
+  // slow drift right (image +x, below threshold) then a decisive swipe left
+  // (image -x --> user right)
+  const xs = [0.4, 0.42, 0.44, 0.46, 0.48, 0.4, 0.3, 0.2, 0.1]
+  let fired: string | null = null
+  for (const x of xs) {
+    const f = e.update(hand(x, 0.5, PALM), (t += 30))
+    if (f.action) fired = f.action.type
+  }
+  expect('direction change starts a fresh run (fires next)', fired === 'next')
+}
+
 // --- swipe works with an imperfect palm (3 of 4 fingers read as extended) ---
 {
   const e = new GestureEngine()
@@ -191,6 +219,19 @@ expect('palm is not pinch', !classifyPose(hand(0.5, 0.5, PALM)).isPinch)
     if (f.action?.type === 'volume') last = f.action.value
   }
   expect(`counter-clockwise circle lowers volume (got ${last.toFixed(2)})`, last < 0.45)
+}
+
+// --- straight-line point movement does NOT change volume (no rotation) ---
+{
+  const e = new GestureEngine()
+  e.currentVolume = 0.5
+  let t = 85000
+  let maxDrift = 0
+  for (let i = 0; i < 20; i++) {
+    const f = e.update(hand(0.3 + i * 0.02, 0.5, POINT), (t += 30))
+    if (f.action?.type === 'volume') maxDrift = Math.max(maxDrift, Math.abs(f.action.value - 0.5))
+  }
+  expect(`linear point motion keeps volume (drift ${maxDrift.toFixed(3)})`, maxDrift < 0.05)
 }
 
 // --- static pointing does NOT change volume (jitter is not a circle) ---

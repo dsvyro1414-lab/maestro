@@ -1,21 +1,25 @@
 // Gesture state machine on top of raw hand poses.
 //
-// Gestures (v2 — three clean gestures, no confusion matrix):
+// Gestures (v3):
 //   PINCH TAP (thumb+index tap)     -> play/pause toggle
-//   PALM SWIPE left/right           -> previous/next track
+//   SWIPE left/right (any pose)     -> previous/next track
 //   POINT + CIRCLE the finger       -> volume, BMW iDrive style:
 //                                      clockwise = louder, counter = quieter
 //
-// The engine consumes one classified frame at a time and emits discrete
-// actions. All thresholds are normalized by hand size so they work at any
-// distance from the camera. Robustness tricks:
-//   - pinch uses enter/exit hysteresis so a borderline pinch doesn't flicker
-//   - pinch is distinguished from a fist by the thumb-to-middle-tip distance
-//   - trails survive brief pose flickers (motion blur during fast movement
-//     often drops one frame's classification)
-//   - swipes accept any "mostly open" hand (>= 3 fingers), not a perfect palm
+// Real-world robustness (learned from live testing):
+//   - Fast swipes motion-blur the hand: the classifier misreads fingers and
+//     the tracker can LOSE the hand entirely for a few frames. So the swipe
+//     trail accepts ANY pose except pinch/point, and a short hand-loss gap
+//     does not reset gesture state.
+//   - Swipe detection looks for the longest monotonic horizontal run, so the
+//     return stroke of a previous swipe can't cancel a new one.
+//   - The volume dial measures the ROTATION OF THE FINGERTIP'S VELOCITY
+//     vector (curvature), not angles around a trail centroid — a centroid is
+//     garbage until a full circle exists, velocity heading works from the
+//     first centimetre of arc. Positions are smoothed and gated by a minimum
+//     step so hand tremor doesn't move the volume.
 
-import { classifyPose, handScale, palmCenter, type Landmarks, LM } from './handTracker'
+import { classifyPose, type Landmarks, LM, palmCenter } from './handTracker'
 
 export type GestureAction =
   | { type: 'togglePlay' }
@@ -36,23 +40,21 @@ export interface GestureFrame {
 
 interface TrailPoint {
   x: number
-  y: number
   t: number
 }
 
-const SWIPE_WINDOW_MS = 350
-const SWIPE_MIN_DX = 0.18 // normalized screen fraction
-const SWIPE_COOLDOWN_MS = 900
-const TRAIL_GRACE_MS = 150 // keep trails through brief pose flickers
+const HAND_LOSS_GRACE_MS = 300 // brief tracking dropouts don't reset gestures
+const SWIPE_WINDOW_MS = 400
+const SWIPE_MIN_DX = 0.15 // normalized screen fraction, monotonic run
+const SWIPE_COOLDOWN_MS = 1000
 const PINCH_ENTER = 0.3
 const PINCH_EXIT = 0.48
 const PINCH_COOLDOWN_MS = 600
-// Volume dial (iDrive style)
-const DIAL_WINDOW_MS = 700
-const DIAL_MIN_POINTS = 6
-const DIAL_MIN_RADIUS = 0.22 // of hand scale — jitter is not a circle
-const DIAL_GAIN = 0.08 // volume change per radian; full circle ≈ 50%
-const DIAL_MAX_STEP = 0.6 // rad per frame — anything bigger is tracking noise
+// Volume dial (iDrive style) — curvature of the fingertip path
+const DIAL_SMOOTH_ALPHA = 0.55 // EMA weight of the newest sample
+const DIAL_MIN_STEP = 0.012 // normalized units the finger must move before a heading sample counts
+const DIAL_MAX_TURN = 1.2 // rad between heading samples — bigger = reversal/noise, skip
+const DIAL_GAIN = 0.09 // volume change per radian of turn; full circle ≈ 55%
 
 function wrapAngle(a: number): number {
   while (a > Math.PI) a -= 2 * Math.PI
@@ -61,28 +63,38 @@ function wrapAngle(a: number): number {
 }
 
 export class GestureEngine {
+  private lastHandAt = -Infinity
   private swipeTrail: TrailPoint[] = []
-  private lastPalmishAt = -Infinity
   private lastSwipeAt = -Infinity
   private pinchActive = false
   private lastPinchAt = -Infinity
-  private dialTrail: TrailPoint[] = []
-  private lastPointAt = -Infinity
+  // Volume dial state
+  private dialSmoothed: { x: number; y: number } | null = null
+  private dialAnchor: { x: number; y: number } | null = null
+  private dialHeading: number | null = null
 
   /** Current player volume, kept in sync by the app so relative volume works. */
   currentVolume = 0.6
 
-  private reset() {
+  private resetAll() {
     this.swipeTrail = []
-    this.dialTrail = []
     this.pinchActive = false
+    this.resetDial()
+  }
+
+  private resetDial() {
+    this.dialSmoothed = null
+    this.dialAnchor = null
+    this.dialHeading = null
   }
 
   update(landmarks: Landmarks | null, now: number): GestureFrame {
     if (!landmarks || landmarks.length < 21) {
-      this.reset()
+      // Brief tracking dropouts (motion blur mid-swipe) keep all state.
+      if (now - this.lastHandAt > HAND_LOSS_GRACE_MS) this.resetAll()
       return { action: null, active: null, volumePreview: null, pose: 'no hand' }
     }
+    this.lastHandAt = now
 
     const pose = classifyPose(landmarks)
     const poseLabel = pose.isPinch
@@ -106,7 +118,7 @@ export class GestureEngine {
     if (!this.pinchActive && pose.isPinch && pose.pinchDist < PINCH_ENTER) {
       this.pinchActive = true
       this.swipeTrail = []
-      this.dialTrail = []
+      this.resetDial()
       if (now - this.lastPinchAt > PINCH_COOLDOWN_MS) {
         this.lastPinchAt = now
         return { action: { type: 'togglePlay' }, active: 'pinch', volumePreview: null, pose: poseLabel }
@@ -114,68 +126,70 @@ export class GestureEngine {
       return { action: null, active: 'pinch', volumePreview: null, pose: poseLabel }
     }
 
-    // --- POINT + CIRCLE: volume dial ---
+    // --- POINT + CIRCLE: volume dial via velocity-heading rotation ---
     if (pose.isPoint) {
-      this.lastPointAt = now
+      this.swipeTrail = [] // pointing is never a swipe
       const tip = landmarks[LM.INDEX_TIP]
-      this.dialTrail.push({ x: tip.x, y: tip.y, t: now })
-    } else if (now - this.lastPointAt > TRAIL_GRACE_MS) {
-      this.dialTrail = []
-    }
-    this.dialTrail = this.dialTrail.filter((p) => now - p.t <= DIAL_WINDOW_MS)
-
-    if (pose.isPoint && this.dialTrail.length >= DIAL_MIN_POINTS) {
-      const n = this.dialTrail.length
-      let cx = 0
-      let cy = 0
-      for (const p of this.dialTrail) {
-        cx += p.x
-        cy += p.y
+      if (!this.dialSmoothed) {
+        this.dialSmoothed = { x: tip.x, y: tip.y }
+        this.dialAnchor = { x: tip.x, y: tip.y }
+        this.dialHeading = null
+        return { action: null, active: 'volume', volumePreview: this.currentVolume, pose: poseLabel }
       }
-      cx /= n
-      cy /= n
-      let meanR = 0
-      for (const p of this.dialTrail) meanR += Math.hypot(p.x - cx, p.y - cy)
-      meanR /= n
-      const scale = handScale(landmarks)
-      if (meanR / scale > DIAL_MIN_RADIUS) {
-        const prev = this.dialTrail[n - 2]
-        const curr = this.dialTrail[n - 1]
-        const delta = wrapAngle(
-          Math.atan2(curr.y - cy, curr.x - cx) - Math.atan2(prev.y - cy, prev.x - cx),
-        )
-        if (Math.abs(delta) < DIAL_MAX_STEP && Math.abs(delta) > 0.005) {
-          // Camera image is NOT mirrored: the user's clockwise circle shows
-          // up counter-clockwise in image coords, i.e. a NEGATIVE angle delta
-          // (atan2 with y pointing down). Clockwise (user) = volume UP.
-          const target = Math.min(1, Math.max(0, this.currentVolume - delta * DIAL_GAIN))
-          this.currentVolume = target
-          return { action: { type: 'volume', value: target }, active: 'volume', volumePreview: target, pose: poseLabel }
+      this.dialSmoothed = {
+        x: this.dialSmoothed.x * (1 - DIAL_SMOOTH_ALPHA) + tip.x * DIAL_SMOOTH_ALPHA,
+        y: this.dialSmoothed.y * (1 - DIAL_SMOOTH_ALPHA) + tip.y * DIAL_SMOOTH_ALPHA,
+      }
+      const anchor = this.dialAnchor!
+      const dx = this.dialSmoothed.x - anchor.x
+      const dy = this.dialSmoothed.y - anchor.y
+      const step = Math.hypot(dx, dy)
+      let action: GestureAction | null = null
+      if (step >= DIAL_MIN_STEP) {
+        const heading = Math.atan2(dy, dx)
+        if (this.dialHeading !== null) {
+          const delta = wrapAngle(heading - this.dialHeading)
+          if (Math.abs(delta) < DIAL_MAX_TURN) {
+            // Camera image is NOT mirrored: the user's clockwise circle shows
+            // up counter-clockwise in image coords => negative heading delta
+            // (atan2 with y pointing down). Clockwise (user) = volume UP.
+            const target = Math.min(1, Math.max(0, this.currentVolume - delta * DIAL_GAIN))
+            if (target !== this.currentVolume) {
+              this.currentVolume = target
+              action = { type: 'volume', value: target }
+            }
+          }
         }
+        this.dialHeading = heading
+        this.dialAnchor = { ...this.dialSmoothed }
       }
-      return { action: null, active: 'volume', volumePreview: this.currentVolume, pose: poseLabel }
+      return { action, active: 'volume', volumePreview: this.currentVolume, pose: poseLabel }
     }
+    this.resetDial()
 
-    // --- SWIPE: mostly-open hand moving fast left/right ---
-    const palmish = pose.extendedCount >= 3
-    if (palmish) {
-      this.lastPalmishAt = now
-      const { x, y } = palmCenter(landmarks)
-      this.swipeTrail.push({ x, y, t: now })
-    } else if (now - this.lastPalmishAt > TRAIL_GRACE_MS) {
-      this.swipeTrail = []
-    }
+    // --- SWIPE: fast horizontal motion in any non-pinch, non-point pose.
+    // Motion blur wrecks pose classification mid-swipe, so we don't demand a
+    // clean palm — intent is in the motion, not the finger count.
+    const { x } = palmCenter(landmarks)
+    this.swipeTrail.push({ x, t: now })
     this.swipeTrail = this.swipeTrail.filter((p) => now - p.t <= SWIPE_WINDOW_MS)
 
-    if (palmish && this.swipeTrail.length >= 3 && now - this.lastSwipeAt > SWIPE_COOLDOWN_MS) {
-      const dx = this.swipeTrail[this.swipeTrail.length - 1].x - this.swipeTrail[0].x
-      if (Math.abs(dx) > SWIPE_MIN_DX) {
+    if (this.swipeTrail.length >= 3 && now - this.lastSwipeAt > SWIPE_COOLDOWN_MS) {
+      // Longest monotonic run ending at the newest point: a direction change
+      // (e.g. the return stroke) stops the walk instead of cancelling out.
+      const trail = this.swipeTrail
+      const last = trail.length - 1
+      const dir = Math.sign(trail[last].x - trail[last - 1].x)
+      let start = last
+      while (start > 0 && Math.sign(trail[start].x - trail[start - 1].x) * dir >= 0) start--
+      const runDx = trail[last].x - trail[start].x
+      if (Math.abs(runDx) > SWIPE_MIN_DX) {
         this.lastSwipeAt = now
         this.swipeTrail = []
         // Camera coords: the image is NOT mirrored, so a user moving their
         // hand to THEIR right shows up as x decreasing. dx < 0 => user
         // swiped right => next track.
-        const userSwipedRight = dx < 0
+        const userSwipedRight = runDx < 0
         return {
           action: { type: userSwipedRight ? 'next' : 'previous' },
           active: userSwipedRight ? 'swipe-right' : 'swipe-left',
