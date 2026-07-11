@@ -4,6 +4,8 @@
 
 Built in 12 hours for [JecHacks 2026](https://jechacks.devpost.com/).
 
+**Live demo:** https://maestro-lemon.vercel.app (needs Spotify Premium; while the Spotify app is in dev mode your account must be whitelisted — see below)
+
 ## Gestures
 
 | Gesture | Action |

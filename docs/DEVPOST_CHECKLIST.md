@@ -9,6 +9,6 @@
   4. Terminal screenshot: 17 passing synthetic-landmark tests
   5. Spotify Connect device picker showing the browser tab listed as a device (proof it really is a Connect device)
 - **Built with tags:** react, typescript, vite, mediapipe, webassembly, spotify-web-playback-sdk, spotify-web-api, oauth-pkce, getusermedia, html5, css3
-- **"Try it out" links:** GitHub repo + live Vercel URL. The Spotify app is in development mode, so judges' Spotify emails must be added under User Management in the Spotify dashboard. Add a one-line note near the link: "Want to try it live? It needs Spotify Premium and a whitelisted account — message me your Spotify email and I'll add you in 30 seconds."
+- **"Try it out" links:** https://github.com/dsvyro1414-lab/maestro + https://maestro-lemon.vercel.app. The Spotify app is in development mode, so judges' Spotify emails must be added under User Management in the Spotify dashboard. Add a one-line note near the link: "Want to try it live? It needs Spotify Premium and a whitelisted account — message me your Spotify email and I'll add you in 30 seconds."
 - **Team/solo field:** mark as solo — it strengthens the "built alone in under 12 hours" claim.
 - **Final proofread:** confirm the submission nowhere claims 60fps, user testing that hasn't happened, or that frames "cannot" leave the machine.
