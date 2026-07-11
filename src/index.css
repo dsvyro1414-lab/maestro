@@ -1,0 +1,330 @@
+:root {
+  --bg: #0a0a0f;
+  --surface: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.1);
+  --text: #f4f4f6;
+  --text-dim: #9a9aa5;
+  --accent: #1ed760;
+  --accent-dark: #14893d;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.app {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Blurred album-art backdrop */
+.backdrop {
+  position: fixed;
+  inset: -80px;
+  background-size: cover;
+  background-position: center;
+  filter: blur(70px) brightness(0.35) saturate(1.4);
+  z-index: 0;
+  transition: background-image 0.6s ease;
+}
+
+/* ---------- Landing ---------- */
+.landing {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  text-align: center;
+  padding: 24px;
+}
+
+.logo {
+  font-size: clamp(3rem, 8vw, 5.5rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  background: linear-gradient(135deg, #fff 30%, var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.logo-hand {
+  background: none;
+  -webkit-background-clip: initial;
+  background-clip: initial;
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+  display: inline-block;
+  animation: wave 2.4s ease-in-out infinite;
+  transform-origin: 70% 80%;
+}
+
+@keyframes wave {
+  0%, 60%, 100% { transform: rotate(0deg); }
+  10% { transform: rotate(14deg); }
+  20% { transform: rotate(-8deg); }
+  30% { transform: rotate(14deg); }
+  40% { transform: rotate(-4deg); }
+  50% { transform: rotate(10deg); }
+}
+
+.tagline {
+  font-size: 1.15rem;
+  color: var(--text-dim);
+  max-width: 480px;
+  line-height: 1.5;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #04220f;
+  border: none;
+  border-radius: 999px;
+  padding: 16px 44px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 8px 32px rgba(30, 215, 96, 0.35);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 12px 40px rgba(30, 215, 96, 0.5);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 10px 28px;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.btn-ghost:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.client-id-input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 18px;
+  color: var(--text);
+  font-size: 1rem;
+  width: min(420px, 90vw);
+  text-align: center;
+}
+
+.client-id-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.hint {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+/* ---------- Conducting stage ---------- */
+.stage {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 24px;
+}
+
+.now-playing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.album-art {
+  width: min(280px, 45vh);
+  height: min(280px, 45vh);
+  border-radius: 20px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+  object-fit: cover;
+}
+
+.track-name {
+  font-size: 1.6rem;
+  font-weight: 700;
+  max-width: 600px;
+}
+
+.track-artists {
+  color: var(--text-dim);
+  font-size: 1.05rem;
+}
+
+.play-state {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--accent);
+}
+
+.no-track {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 60px 20px;
+}
+
+.volume-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(360px, 80vw);
+  margin-top: 6px;
+}
+
+.volume-track {
+  flex: 1;
+  height: 8px;
+  background: var(--surface);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.volume-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-dark), var(--accent));
+  border-radius: 999px;
+  transition: width 0.08s linear;
+}
+
+.volume-num {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  width: 2.2em;
+  text-align: right;
+}
+
+/* ---------- Camera panel ---------- */
+.camera-panel {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  width: 260px;
+  aspect-ratio: 4 / 3;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  z-index: 2;
+}
+
+.camera-video,
+.camera-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.camera-video {
+  transform: scaleX(-1); /* selfie mirror */
+}
+
+/* ---------- Legend / HUD ---------- */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+.legend-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  transition: all 0.15s ease;
+}
+
+.legend-item.active {
+  background: rgba(30, 215, 96, 0.18);
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: scale(1.06);
+}
+
+.toast {
+  position: fixed;
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 10, 15, 0.85);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 14px 32px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  z-index: 3;
+  animation: toast-pop 0.25s ease;
+  backdrop-filter: blur(12px);
+}
+
+@keyframes toast-pop {
+  from { transform: translateX(-50%) scale(0.8); opacity: 0; }
+  to { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
+.error-banner {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  max-width: 420px;
+  background: rgba(180, 40, 40, 0.25);
+  border: 1px solid rgba(255, 90, 90, 0.5);
+  color: #ffb4b4;
+  border-radius: 12px;
+  padding: 12px 18px;
+  font-size: 0.9rem;
+  z-index: 4;
+}
+
+@media (max-width: 720px) {
+  .camera-panel {
+    position: static;
+    width: min(320px, 90vw);
+  }
+}
