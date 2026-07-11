@@ -8,11 +8,14 @@ Built in 12 hours for [JecHacks 2026](https://jechacks.devpost.com/).
 
 | Gesture | Action |
 |---|---|
-| 🤏 Pinch (thumb + index tap) | Play / Pause |
+| 🤏 Pinch tap (thumb + index) | Play / Pause |
 | 👋 Open palm, swipe right | Next track |
 | 👋 Open palm, swipe left | Previous track |
-| ☝️ Point up, move hand up/down | Volume |
-| ✊ Hold a fist (~0.5s) | Mute / Unmute |
+| 🔄 Point a finger, draw circles | Volume — clockwise = louder, like a BMW iDrive dial |
+
+## Controls any Spotify device
+
+Maestro is a hybrid controller: it drives **whatever Spotify device is active** through the Web API — the desktop app, your phone, a smart speaker — and also registers the browser tab itself as a Spotify Connect device ("Maestro") via the Web Playback SDK, so it works even with nothing else running. Pick the target device right in the UI.
 
 ## Why it matters
 

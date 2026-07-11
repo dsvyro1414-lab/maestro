@@ -10,13 +10,13 @@ SAY: "I just skipped a song without touching anything."
 SHOW: Pinch thumb+index — music stops. Pinch again — it resumes. Keep the gesture indicator in frame.
 SAY: "This is Maestro. Your webcam is the Spotify remote. Pinch to pause, pinch to play."
 
-**0:12–0:19 — VOLUME**
-SHOW: Point index finger up, raise and lower your hand; volume bar slides with it.
-SAY: "Point, and the volume rides your hand like a fader."
+**0:12–0:19 — VOLUME DIAL**
+SHOW: Point index finger, draw circles — volume bar rides the rotation. Clockwise up, counter-clockwise down.
+SAY: "And this is my favorite: draw circles like a BMW iDrive dial. Clockwise, louder. Counter-clockwise, quieter."
 
-**0:19–0:25 — MUTE**
-SHOW: Hold a fist for half a second — mute icon appears. Open hand, unmute.
-SAY: "Hold a fist half a second: mute. That hold time is deliberate — no accidental silence."
+**0:19–0:25 — CONTROLS ANY DEVICE**
+SHOW: Spotify DESKTOP app visibly playing; you swipe on camera in the browser — the desktop app switches tracks.
+SAY: "It's not just the browser — Maestro drives whatever Spotify device is playing. That's my desktop app obeying my hand."
 
 **0:25–0:35 — WHO IT'S FOR**
 SHOW: Quick cut: you holding a guitar with both hands on the fretboard, swiping to skip the backing track. (If no time for a second setup, stay on the app and let the voice-over carry it.)
@@ -31,7 +31,7 @@ SHOW: DevTools Network tab open while gestures fire — nothing but Spotify API 
 SAY: "There is no backend. Hand tracking, OAuth with PKCE, playback — all client-side. Camera frames are never uploaded, because there's nowhere to upload them."
 
 **1:00–1:10 — THE TESTS**
-SHOW: Terminal running `npx tsx test/engine-test.ts` — 15 tests passing.
+SHOW: Terminal running `npx tsx test/engine-test.ts` — 17 tests passing.
 SAY: "I even unit tested it with synthetic hand landmarks — no camera needed — and the tests caught a real bug where the very first gesture after page load got silently swallowed."
 
 **1:10–1:20 — CLOSE**

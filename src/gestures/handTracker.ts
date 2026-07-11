@@ -72,6 +72,8 @@ export interface HandPose {
   extendedCount: number
   /** thumb-tip to index-tip distance, normalized by hand size */
   pinchDist: number
+  /** thumb-tip to middle-tip distance, normalized by hand size */
+  thumbMiddleDist: number
   isPinch: boolean
   isFist: boolean
   isPalm: boolean
@@ -86,11 +88,15 @@ export function classifyPose(lm: Landmarks): HandPose {
   const extendedCount = [index, middle, ring, pinky].filter(Boolean).length
   const scale = handScale(lm)
   const pinchDist = dist(lm[LM.THUMB_TIP], lm[LM.INDEX_TIP]) / scale
-  // Pinch: thumb+index touching while at least one other finger is up (so it
-  // can't be confused with a fist).
-  const isPinch = pinchDist < 0.35 && (middle || ring)
+  const thumbMiddleDist = dist(lm[LM.THUMB_TIP], lm[LM.MIDDLE_TIP]) / scale
+  // Pinch: thumb+index tips touching. The thumb-to-MIDDLE-tip distance is the
+  // fist guard: in a fist the thumb wraps close to ALL fingertips, in a pinch
+  // the middle finger stays away from the thumb.
+  const isPinch = pinchDist < 0.35 && thumbMiddleDist > 0.45
   const isFist = extendedCount === 0 && !isPinch
   const isPalm = extendedCount === 4 && !isPinch
-  const isPoint = index && !middle && !ring && !pinky && !isPinch
-  return { index, middle, ring, pinky, extendedCount, pinchDist, isPinch, isFist, isPalm, isPoint }
+  // Point: index up, middle+ring curled (pinky is ignored — many people
+  // can't curl it independently).
+  const isPoint = index && !middle && !ring && !isPinch
+  return { index, middle, ring, pinky, extendedCount, pinchDist, thumbMiddleDist, isPinch, isFist, isPalm, isPoint }
 }

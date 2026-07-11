@@ -7,35 +7,37 @@ import {
   isLoggedIn,
   logout,
 } from './auth/spotifyAuth'
-import { MaestroPlayer, type TrackInfo } from './player/spotifyPlayer'
+import { MaestroPlayer, type TrackInfo, type SpotifyDevice } from './player/spotifyPlayer'
 import { GestureEngine, type GestureFrame, type GestureName } from './gestures/gestureEngine'
 import { CameraPanel } from './components/CameraPanel'
 
-type Stage = 'landing' | 'connecting' | 'ready' | 'conducting'
+type Stage = 'landing' | 'connecting' | 'conducting'
 
 const GESTURE_LABELS: Record<Exclude<GestureName, null>, string> = {
-  pinch: '🤏 Play / Pause',
-  'swipe-left': '⏮ Previous track',
-  'swipe-right': '⏭ Next track',
-  volume: '☝️ Volume',
-  fist: '✊ Mute',
+  pinch: '🤏 Tap = Play / Pause',
+  'swipe-left': '⏮ Swipe left',
+  'swipe-right': '⏭ Swipe right',
+  volume: '🔄 Circle = Volume',
 }
 
 export default function App() {
   const [stage, setStage] = useState<Stage>('landing')
   const [error, setError] = useState<string | null>(null)
   const [track, setTrack] = useState<TrackInfo | null>(null)
+  const [deviceName, setDeviceName] = useState<string | null>(null)
+  const [devices, setDevices] = useState<SpotifyDevice[]>([])
   const [volume, setVolume] = useState(0.6)
   const [activeGesture, setActiveGesture] = useState<GestureName>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [clientIdInput, setClientIdInput] = useState(getClientId())
-  const [muted, setMuted] = useState(false)
   const [pose, setPose] = useState('no hand')
 
   const player = useMemo(() => new MaestroPlayer(), [])
   const engine = useMemo(() => new GestureEngine(), [])
   const toastTimer = useRef<number>(0)
   const lastVolumeSent = useRef(0)
+  const gestureRef = useRef<GestureName>(null)
+  gestureRef.current = activeGesture
 
   const showToast = useCallback((text: string) => {
     setToast(text)
@@ -58,20 +60,20 @@ export default function App() {
     }
   }, [])
 
-  // Once logged in, bring up the Web Playback SDK device.
+  // Once logged in, start the hybrid controller (API polling + SDK device).
   useEffect(() => {
     if (stage !== 'connecting') return
     player
       .init({
-        onReady: async () => {
-          try {
-            await player.transferPlayback()
-          } catch {
-            /* non-fatal: user can transfer from the Spotify app */
+        onSnapshot: (snap) => {
+          setTrack(snap.track)
+          setDeviceName(snap.deviceName)
+          if (snap.volumePercent !== null && gestureRef.current !== 'volume') {
+            setVolume(snap.volumePercent / 100)
+            engine.currentVolume = snap.volumePercent / 100
           }
-          setStage('ready')
         },
-        onState: (t) => setTrack(t),
+        onDevices: setDevices,
         onError: (msg) => {
           if (msg.startsWith('authentication_error')) {
             logout()
@@ -81,8 +83,9 @@ export default function App() {
         },
       })
       .catch((e) => setError(String(e)))
+    setStage('conducting')
     return () => player.disconnect()
-  }, [stage, player])
+  }, [stage, player, engine])
 
   const handleGestureFrame = useCallback(
     (frame: GestureFrame) => {
@@ -94,62 +97,40 @@ export default function App() {
       console.log('[maestro] gesture action:', action)
       switch (action.type) {
         case 'togglePlay':
-          player.togglePlay()
+          player.togglePlay().catch((e) => setError(String(e)))
           showToast('⏯ Play / Pause')
           break
         case 'next':
-          player.next()
+          player.next().catch((e) => setError(String(e)))
           showToast('⏭ Next track')
           break
         case 'previous':
-          player.previous()
+          player.previous().catch((e) => setError(String(e)))
           showToast('⏮ Previous track')
           break
         case 'volume': {
-          engine.currentVolume = action.value
           const now = performance.now()
-          if (now - lastVolumeSent.current > 120) {
+          if (now - lastVolumeSent.current > 200) {
             lastVolumeSent.current = now
             player.setVolume(action.value)
           }
           break
         }
-        case 'muteToggle':
-          player.toggleMute().then((m) => {
-            setMuted(m)
-            showToast(m ? '🔇 Muted' : '🔊 Unmuted')
-          })
-          break
       }
     },
-    [player, engine, showToast],
+    [player, showToast],
   )
 
-  const startConducting = useCallback(async () => {
+  const connect = useCallback(async () => {
     setError(null)
+    if (!getClientId() && clientIdInput.trim()) setClientId(clientIdInput)
     try {
       await player.activate()
     } catch {
-      /* activateElement can fail silently on some browsers */
+      /* activation is best-effort */
     }
-    try {
-      const vol = await player.getVolume()
-      engine.currentVolume = vol
-      setVolume(vol)
-    } catch {
-      /* keep defaults */
-    }
-    setStage('conducting')
-    if (!track) {
-      player.playTopTracks().catch((e) => setError(String(e)))
-    }
-  }, [player, engine, track])
-
-  const connect = useCallback(() => {
-    setError(null)
-    if (!getClientId() && clientIdInput.trim()) setClientId(clientIdInput)
     beginLogin().catch((e) => setError(String(e)))
-  }, [clientIdInput])
+  }, [clientIdInput, player])
 
   return (
     <div className="app">
@@ -185,21 +166,6 @@ export default function App() {
         </main>
       )}
 
-      {stage === 'ready' && (
-        <main className="landing">
-          <h1 className="logo">
-            Maestro <span className="logo-hand">🖐</span>
-          </h1>
-          <p className="tagline">Player connected. Allow the camera and raise your hand — you're the conductor now.</p>
-          <button className="btn-primary" onClick={startConducting}>
-            🎬 Start conducting
-          </button>
-          <button className="btn-ghost" onClick={() => { logout(); setStage('landing') }}>
-            Log out
-          </button>
-        </main>
-      )}
-
       {stage === 'conducting' && (
         <main className="stage">
           <section className="now-playing">
@@ -208,26 +174,46 @@ export default function App() {
                 <img className="album-art" src={track.albumArt} alt="Album art" />
                 <h2 className="track-name">{track.name}</h2>
                 <p className="track-artists">{track.artists}</p>
-                <p className="play-state">{track.paused ? 'Paused' : 'Playing'}</p>
+                <p className="play-state">
+                  {track.paused ? 'Paused' : 'Playing'}
+                  {deviceName ? ` · on ${deviceName}` : ''}
+                </p>
               </>
             ) : (
               <div className="no-track">
-                <p>Starting your music…</p>
-                <p className="hint">If nothing plays, hit play in any Spotify app and pick the “Maestro” device.</p>
+                <p>No music playing yet.</p>
+                <button className="btn-primary" onClick={() => player.playTopTracks().catch((e) => setError(String(e)))}>
+                  ▶️ Start my top tracks
+                </button>
+                <p className="hint">…or just hit play in Spotify on any device — Maestro controls whatever is playing.</p>
               </div>
             )}
             <div className="volume-bar">
-              <span>{muted ? '🔇' : '🔊'}</span>
+              <span>🔊</span>
               <div className="volume-track">
                 <div className="volume-fill" style={{ width: `${Math.round(volume * 100)}%` }} />
               </div>
               <span className="volume-num">{Math.round(volume * 100)}</span>
             </div>
             <div className="manual-controls">
-              <button onClick={() => { player.previous(); showToast('⏮ Previous track') }}>⏮</button>
-              <button onClick={() => { player.togglePlay(); showToast('⏯ Play / Pause') }}>⏯</button>
-              <button onClick={() => { player.next(); showToast('⏭ Next track') }}>⏭</button>
+              <button onClick={() => { player.previous().catch((e) => setError(String(e))); showToast('⏮ Previous track') }}>⏮</button>
+              <button onClick={() => { player.togglePlay().catch((e) => setError(String(e))); showToast('⏯ Play / Pause') }}>⏯</button>
+              <button onClick={() => { player.next().catch((e) => setError(String(e))); showToast('⏭ Next track') }}>⏭</button>
             </div>
+            {devices.length > 0 && (
+              <div className="device-row">
+                {devices.map((d) => (
+                  <button
+                    key={d.id}
+                    className={`device-pill ${d.isActive ? 'active' : ''}`}
+                    onClick={() => player.transferTo(d.id).catch((e) => setError(String(e)))}
+                    title={d.type}
+                  >
+                    {d.type === 'Computer' ? '💻' : d.type === 'Smartphone' ? '📱' : '🔈'} {d.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </section>
 
           <CameraPanel engine={engine} onFrame={handleGestureFrame} onCameraError={setError} />
@@ -239,13 +225,20 @@ export default function App() {
                 {GESTURE_LABELS[g]}
               </span>
             ))}
+            <button className="btn-ghost small" onClick={() => { logout(); setStage('landing') }}>
+              Log out
+            </button>
           </footer>
 
           {toast && <div className="toast">{toast}</div>}
         </main>
       )}
 
-      {error && <div className="error-banner">{error}</div>}
+      {error && (
+        <div className="error-banner" onClick={() => setError(null)}>
+          {error}
+        </div>
+      )}
     </div>
   )
 }

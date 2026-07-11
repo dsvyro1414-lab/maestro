@@ -1,29 +1,29 @@
 // Gesture state machine on top of raw hand poses.
 //
-// Gestures:
-//   PINCH (thumb+index tap)         -> play/pause toggle
+// Gestures (v2 — three clean gestures, no confusion matrix):
+//   PINCH TAP (thumb+index tap)     -> play/pause toggle
 //   PALM SWIPE left/right           -> previous/next track
-//   POINT + move hand up/down       -> volume (relative to entry point)
-//   FIST held ~600ms                -> mute toggle
+//   POINT + CIRCLE the finger       -> volume, BMW iDrive style:
+//                                      clockwise = louder, counter = quieter
 //
 // The engine consumes one classified frame at a time and emits discrete
 // actions. All thresholds are normalized by hand size so they work at any
 // distance from the camera. Robustness tricks:
 //   - pinch uses enter/exit hysteresis so a borderline pinch doesn't flicker
-//   - the swipe trail survives brief pose flickers (motion blur during a fast
-//     swipe often drops one frame's classification)
+//   - pinch is distinguished from a fist by the thumb-to-middle-tip distance
+//   - trails survive brief pose flickers (motion blur during fast movement
+//     often drops one frame's classification)
 //   - swipes accept any "mostly open" hand (>= 3 fingers), not a perfect palm
 
-import { classifyPose, palmCenter, type Landmarks, LM } from './handTracker'
+import { classifyPose, handScale, palmCenter, type Landmarks, LM } from './handTracker'
 
 export type GestureAction =
   | { type: 'togglePlay' }
   | { type: 'next' }
   | { type: 'previous' }
   | { type: 'volume'; value: number } // absolute 0..1
-  | { type: 'muteToggle' }
 
-export type GestureName = 'pinch' | 'swipe-left' | 'swipe-right' | 'volume' | 'fist' | null
+export type GestureName = 'pinch' | 'swipe-left' | 'swipe-right' | 'volume' | null
 
 export interface GestureFrame {
   action: GestureAction | null
@@ -36,39 +36,51 @@ export interface GestureFrame {
 
 interface TrailPoint {
   x: number
+  y: number
   t: number
 }
 
 const SWIPE_WINDOW_MS = 350
 const SWIPE_MIN_DX = 0.18 // normalized screen fraction
 const SWIPE_COOLDOWN_MS = 900
-const TRAIL_GRACE_MS = 150 // keep the trail through brief pose flickers
+const TRAIL_GRACE_MS = 150 // keep trails through brief pose flickers
 const PINCH_ENTER = 0.3
 const PINCH_EXIT = 0.48
-const PINCH_COOLDOWN_MS = 700
-const FIST_HOLD_MS = 550
-const FIST_COOLDOWN_MS = 1200
-const VOLUME_SENSITIVITY = 2.2 // full volume sweep ≈ half the frame height
+const PINCH_COOLDOWN_MS = 600
+// Volume dial (iDrive style)
+const DIAL_WINDOW_MS = 700
+const DIAL_MIN_POINTS = 6
+const DIAL_MIN_RADIUS = 0.22 // of hand scale — jitter is not a circle
+const DIAL_GAIN = 0.08 // volume change per radian; full circle ≈ 50%
+const DIAL_MAX_STEP = 0.6 // rad per frame — anything bigger is tracking noise
+
+function wrapAngle(a: number): number {
+  while (a > Math.PI) a -= 2 * Math.PI
+  while (a < -Math.PI) a += 2 * Math.PI
+  return a
+}
 
 export class GestureEngine {
-  private trail: TrailPoint[] = []
+  private swipeTrail: TrailPoint[] = []
   private lastPalmishAt = -Infinity
   private lastSwipeAt = -Infinity
-  private lastPinchAt = -Infinity
   private pinchActive = false
-  private fistStart: number | null = null
-  private lastFistToggleAt = -Infinity
-  private volumeAnchor: { y: number; volume: number } | null = null
+  private lastPinchAt = -Infinity
+  private dialTrail: TrailPoint[] = []
+  private lastPointAt = -Infinity
 
   /** Current player volume, kept in sync by the app so relative volume works. */
   currentVolume = 0.6
 
+  private reset() {
+    this.swipeTrail = []
+    this.dialTrail = []
+    this.pinchActive = false
+  }
+
   update(landmarks: Landmarks | null, now: number): GestureFrame {
     if (!landmarks || landmarks.length < 21) {
-      this.trail = []
-      this.fistStart = null
-      this.volumeAnchor = null
-      this.pinchActive = false
+      this.reset()
       return { action: null, active: null, volumePreview: null, pose: 'no hand' }
     }
 
@@ -83,21 +95,18 @@ export class GestureEngine {
             ? 'palm'
             : `fingers:${pose.extendedCount}`
 
-    // --- PINCH with hysteresis: play/pause on the moment fingers touch ---
+    // --- PINCH TAP with hysteresis: play/pause the moment fingers touch ---
     if (this.pinchActive) {
       if (pose.pinchDist > PINCH_EXIT) {
         this.pinchActive = false
       } else {
-        this.volumeAnchor = null
-        this.fistStart = null
         return { action: null, active: 'pinch', volumePreview: null, pose: poseLabel }
       }
     }
     if (!this.pinchActive && pose.isPinch && pose.pinchDist < PINCH_ENTER) {
       this.pinchActive = true
-      this.volumeAnchor = null
-      this.fistStart = null
-      this.trail = []
+      this.swipeTrail = []
+      this.dialTrail = []
       if (now - this.lastPinchAt > PINCH_COOLDOWN_MS) {
         this.lastPinchAt = now
         return { action: { type: 'togglePlay' }, active: 'pinch', volumePreview: null, pose: poseLabel }
@@ -105,48 +114,64 @@ export class GestureEngine {
       return { action: null, active: 'pinch', volumePreview: null, pose: poseLabel }
     }
 
-    // --- FIST: hold to mute/unmute ---
-    if (pose.isFist) {
-      this.volumeAnchor = null
-      if (this.fistStart === null) this.fistStart = now
-      if (now - this.fistStart > FIST_HOLD_MS && now - this.lastFistToggleAt > FIST_COOLDOWN_MS) {
-        this.lastFistToggleAt = now
-        this.fistStart = null
-        return { action: { type: 'muteToggle' }, active: 'fist', volumePreview: null, pose: poseLabel }
-      }
-      return { action: null, active: 'fist', volumePreview: null, pose: poseLabel }
-    }
-    this.fistStart = null
-
-    // --- POINT: relative volume control ---
+    // --- POINT + CIRCLE: volume dial ---
     if (pose.isPoint) {
-      const tipY = landmarks[LM.INDEX_TIP].y
-      if (!this.volumeAnchor) {
-        this.volumeAnchor = { y: tipY, volume: this.currentVolume }
-        return { action: null, active: 'volume', volumePreview: this.currentVolume, pose: poseLabel }
-      }
-      // Moving the hand UP (y decreases) raises the volume.
-      const delta = (this.volumeAnchor.y - tipY) * VOLUME_SENSITIVITY
-      const target = Math.min(1, Math.max(0, this.volumeAnchor.volume + delta))
-      return { action: { type: 'volume', value: target }, active: 'volume', volumePreview: target, pose: poseLabel }
+      this.lastPointAt = now
+      const tip = landmarks[LM.INDEX_TIP]
+      this.dialTrail.push({ x: tip.x, y: tip.y, t: now })
+    } else if (now - this.lastPointAt > TRAIL_GRACE_MS) {
+      this.dialTrail = []
     }
-    this.volumeAnchor = null
+    this.dialTrail = this.dialTrail.filter((p) => now - p.t <= DIAL_WINDOW_MS)
+
+    if (pose.isPoint && this.dialTrail.length >= DIAL_MIN_POINTS) {
+      const n = this.dialTrail.length
+      let cx = 0
+      let cy = 0
+      for (const p of this.dialTrail) {
+        cx += p.x
+        cy += p.y
+      }
+      cx /= n
+      cy /= n
+      let meanR = 0
+      for (const p of this.dialTrail) meanR += Math.hypot(p.x - cx, p.y - cy)
+      meanR /= n
+      const scale = handScale(landmarks)
+      if (meanR / scale > DIAL_MIN_RADIUS) {
+        const prev = this.dialTrail[n - 2]
+        const curr = this.dialTrail[n - 1]
+        const delta = wrapAngle(
+          Math.atan2(curr.y - cy, curr.x - cx) - Math.atan2(prev.y - cy, prev.x - cx),
+        )
+        if (Math.abs(delta) < DIAL_MAX_STEP && Math.abs(delta) > 0.005) {
+          // Camera image is NOT mirrored: the user's clockwise circle shows
+          // up counter-clockwise in image coords, i.e. a NEGATIVE angle delta
+          // (atan2 with y pointing down). Clockwise (user) = volume UP.
+          const target = Math.min(1, Math.max(0, this.currentVolume - delta * DIAL_GAIN))
+          this.currentVolume = target
+          return { action: { type: 'volume', value: target }, active: 'volume', volumePreview: target, pose: poseLabel }
+        }
+      }
+      return { action: null, active: 'volume', volumePreview: this.currentVolume, pose: poseLabel }
+    }
 
     // --- SWIPE: mostly-open hand moving fast left/right ---
     const palmish = pose.extendedCount >= 3
     if (palmish) {
       this.lastPalmishAt = now
-      this.trail.push({ x: palmCenter(landmarks).x, t: now })
+      const { x, y } = palmCenter(landmarks)
+      this.swipeTrail.push({ x, y, t: now })
     } else if (now - this.lastPalmishAt > TRAIL_GRACE_MS) {
-      this.trail = []
+      this.swipeTrail = []
     }
-    this.trail = this.trail.filter((p) => now - p.t <= SWIPE_WINDOW_MS)
+    this.swipeTrail = this.swipeTrail.filter((p) => now - p.t <= SWIPE_WINDOW_MS)
 
-    if (palmish && this.trail.length >= 3 && now - this.lastSwipeAt > SWIPE_COOLDOWN_MS) {
-      const dx = this.trail[this.trail.length - 1].x - this.trail[0].x
+    if (palmish && this.swipeTrail.length >= 3 && now - this.lastSwipeAt > SWIPE_COOLDOWN_MS) {
+      const dx = this.swipeTrail[this.swipeTrail.length - 1].x - this.swipeTrail[0].x
       if (Math.abs(dx) > SWIPE_MIN_DX) {
         this.lastSwipeAt = now
-        this.trail = []
+        this.swipeTrail = []
         // Camera coords: the image is NOT mirrored, so a user moving their
         // hand to THEIR right shows up as x decreasing. dx < 0 => user
         // swiped right => next track.
