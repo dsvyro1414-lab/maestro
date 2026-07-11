@@ -169,20 +169,21 @@ body {
   align-items: center;
   gap: 10px;
   text-align: center;
+  max-width: 400px;
 }
 
 .album-art {
-  width: min(280px, 45vh);
-  height: min(280px, 45vh);
-  border-radius: 20px;
+  width: min(200px, 30vh);
+  height: min(200px, 30vh);
+  border-radius: 18px;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
   object-fit: cover;
 }
 
 .track-name {
-  font-size: 1.6rem;
+  font-size: 1.5rem;
   font-weight: 700;
-  max-width: 600px;
+  max-width: 380px;
 }
 
 .track-artists {
@@ -294,32 +295,42 @@ body {
 }
 
 .pose-debug {
-  position: fixed;
-  right: 24px;
-  bottom: calc(24px + 195px + 10px); /* above the camera panel */
-  z-index: 2;
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 3;
   background: rgba(10, 10, 15, 0.7);
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 5px 14px;
-  font-size: 0.8rem;
+  padding: 6px 16px;
+  font-size: 0.9rem;
   font-family: 'SF Mono', ui-monospace, monospace;
-  color: var(--text-dim);
+  color: var(--text);
   backdrop-filter: blur(8px);
 }
 
-/* ---------- Camera panel ---------- */
+/* ---------- Conductor stage: big camera view ---------- */
+.stage-grid {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(24px, 4vw, 56px);
+  width: 100%;
+}
+
+.conductor {
+  position: relative;
+  flex-shrink: 0;
+}
+
 .camera-panel {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  width: 260px;
+  position: relative;
+  width: min(760px, 52vw, 100vh);
   aspect-ratio: 4 / 3;
-  border-radius: 16px;
+  border-radius: 22px;
   overflow: hidden;
   border: 1px solid var(--border);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
-  z-index: 2;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.65);
 }
 
 .camera-video,
@@ -396,9 +407,17 @@ body {
   z-index: 4;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 900px) {
+  .stage-grid {
+    flex-direction: column-reverse;
+  }
+
   .camera-panel {
-    position: static;
-    width: min(320px, 90vw);
+    width: min(560px, 92vw);
+  }
+
+  .album-art {
+    width: min(140px, 20vh);
+    height: min(140px, 20vh);
   }
 }

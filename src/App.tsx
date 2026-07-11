@@ -226,6 +226,7 @@ export default function App() {
 
       {stage === 'conducting' && (
         <main className="stage">
+          <div className="stage-grid">
           <section className="now-playing">
             {track ? (
               <>
@@ -274,8 +275,11 @@ export default function App() {
             )}
           </section>
 
-          <CameraPanel engine={engine} onFrame={handleGestureFrame} onCameraError={setError} />
-          <div className="pose-debug">👁 {pose}</div>
+          <section className="conductor">
+            <CameraPanel engine={engine} onFrame={handleGestureFrame} onCameraError={setError} />
+            <div className="pose-debug">👁 {pose}</div>
+          </section>
+          </div>
 
           <footer className="legend">
             {(Object.keys(GESTURE_LABELS) as Exclude<GestureName, null>[]).map((g) => (
